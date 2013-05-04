@@ -13,7 +13,7 @@ Options:
 
 import os
 from functools import partial
-from os.path import join
+from os.path import join, exists
 import logging
 from hashlib import md5
 
@@ -39,11 +39,28 @@ def entry_console():
         logger.setLevel(logging.INFO)
     if args['push'] or args['pull']:
         traverse()
+    if args['package']:
+        package()
 
 
-def examine_file(candidate, directory=None):
-    path = join(directory, candidate)
+def package():
+    if args["add"]:
+        assert exists("repo")
+        if not exists("uploading"):
+            os.mkdir("uploading")
+        import shutil
+        shutil.copy(args['<file>'], "uploading")
+        from sh import vagrant
+        vagrant.ssh(c="reprepro -b /vagrant/repo includedeb quantal /vagrant/uploading/{0}".format(args['<file>']))
+
+
+def examine_remote(path, key=None):
     logger.debug("Examining file: %s", path)
+
+    if not exists(path):
+        logger.info("Remote not present on local: %s", path)
+        download_file(path, key)
+        return
 
     with open(path) as in_file:
         local_hash = md5(in_file.read()).hexdigest()
@@ -53,13 +70,24 @@ def examine_file(candidate, directory=None):
     # The etag string contains quotes...
     etag = key.etag[1:-1] if key else ""
     if etag != local_hash:
-        if args['push']:
-            upload_file(path)
-        else:
-            logger.info("Local differs from remote: %s", path)
+        logger.info("Local differs from remote: %s", path)
+        upload_file(path)
+
+
+def download_file(path, key):
+    if not args['pull']:
+        return
+    if not key:
+        logger.error("Download method expects key")
+        raise ValueError("Need to provide key")
+
+    logger.info("Pulling remote to local: %s", path)
+    key.get_contents_to_filename(path)
 
 
 def upload_file(path):
+    if not args['push']:
+        return
     logger.info("Pushing local to remote: %s", path)
     key = Key(bucket, path)
     key.set_contents_from_filename(path, reduced_redundancy=True)
@@ -67,12 +95,17 @@ def upload_file(path):
 
 def traverse():
     os.chdir('repo')
+    memory = set()
     for root, dirs, files in os.walk('.'):
         root = root[2:]
-        dir_wrapper = partial(examine_file, directory=root)
-        map(dir_wrapper, files)
+        paths = map(lambda x: join(root, x), files)
+        memory = memory.union(set(paths))
+        map(examine_remote, paths)
     for key in bucket.list():
-        logger.debug(key)
+        if key.name in memory:
+            logger.debug("Skipping pull because already checked: %s", key.name)
+            continue
+        examine_remote(key.name, key=key)
 
 
 if __name__ == "__main__":
