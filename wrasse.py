@@ -2,13 +2,13 @@
 """Wrasse
 
 Usage:
-    wrasse (pull|push) [options]
-    wrasse package (add|remove) [options] <file>
+    wrasse (pull|push) [options] <bucket>
+    wrasse package (add|remove) [options] <distro> <file>
 
 Options:
-    -h --help       Show this help
-    -v --verbose    Be more verbose
-    --debug         Be way more verbose
+    -h --help         Show this help
+    -v --verbose      Be more verbose
+    --debug           Be way more verbose
 """
 
 import os
@@ -16,10 +16,15 @@ from functools import partial
 from os.path import join, exists
 import logging
 from hashlib import md5
+import shutil
+from sh import vagrant
 
 from docopt import docopt
 
 from boto.s3.connection import S3Connection, Key
+
+UPLOAD_DIR = "uploading"
+REPO_DIR = "repo"
 
 logger = logging.getLogger("wrasse")
 logger.setLevel(logging.WARNING)
@@ -44,14 +49,15 @@ def entry_console():
 
 
 def package():
+    package_file = args['<file>']
+    distro = args['<distro>']
     if args["add"]:
-        assert exists("repo")
-        if not exists("uploading"):
-            os.mkdir("uploading")
-        import shutil
-        shutil.copy(args['<file>'], "uploading")
-        from sh import vagrant
-        vagrant.ssh(c="reprepro -b /vagrant/repo includedeb quantal /vagrant/uploading/{0}".format(args['<file>']))
+        assert exists(REPO_DIR)
+        if not exists(UPLOAD_DIR):
+            os.mkdir(UPLOAD_DIR)
+        shutil.copy(package_file, UPLOAD_DIR)
+        vagrant.ssh(c="reprepro -b /vagrant/{0} includedeb {1} /vagrant/{2}/{3}".format(REPO_DIR, distro, UPLOAD_DIR, package_file))
+        os.remove(join(UPLOAD_DIR, package_file))
 
 
 def examine_remote(path, key=None):
@@ -94,7 +100,7 @@ def upload_file(path):
 
 
 def traverse():
-    os.chdir('repo')
+    os.chdir(REPO_DIR)
     memory = set()
     for root, dirs, files in os.walk('.'):
         root = root[2:]
@@ -110,6 +116,7 @@ def traverse():
 
 if __name__ == "__main__":
     args = docopt(__doc__)
-    conn = S3Connection()
-    bucket = conn.get_bucket("com.fishsilo.skipjack")
+    if args['pull'] or args['push']:
+        conn = S3Connection()
+        bucket = conn.get_bucket(args['<bucket>'])
     entry_console()

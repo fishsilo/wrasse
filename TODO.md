@@ -1,4 +1,5 @@
 * Make sure packages are xz compressed
 * Config to enforce naming pattern? prefix?
-* Read AWS keys from some file... probably in home dir
-    * Could steal boto's file?
+* Add lock somewhere, so two instances dont stomp on one another
+* More intelligent interaction with vagrant
+    * Actually bring it up before using it?
