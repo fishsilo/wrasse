@@ -26,6 +26,8 @@ from boto.s3.connection import S3Connection, Key
 UPLOAD_DIR = "uploading"
 REPO_DIR = "repo"
 
+args = None
+
 logger = logging.getLogger("wrasse")
 logger.setLevel(logging.WARNING)
 ch = logging.StreamHandler()
@@ -38,13 +40,19 @@ logger.addHandler(ch)
 
 
 def entry_console():
+    global args, bucket
+    args = docopt(__doc__)
+
     if args['--debug']:
         logger.setLevel(logging.DEBUG)
     elif args['--verbose']:
         logger.setLevel(logging.INFO)
+
     if args['push'] or args['pull']:
+        conn = S3Connection()
+        bucket = conn.get_bucket(args['<bucket>'])
         traverse()
-    if args['package']:
+    elif args['package']:
         package()
 
 
@@ -56,7 +64,12 @@ def package():
         if not exists(UPLOAD_DIR):
             os.mkdir(UPLOAD_DIR)
         shutil.copy(package_file, UPLOAD_DIR)
-        vagrant.ssh(c="reprepro -b /vagrant/{0} includedeb {1} /vagrant/{2}/{3}".format(REPO_DIR, distro, UPLOAD_DIR, package_file))
+        vagrant.ssh(
+                c="reprepro -b /vagrant/{0} " +
+                "includedeb {1} /vagrant/{2}/{3}".format(REPO_DIR,
+                                                         distro,
+                                                         UPLOAD_DIR,
+                                                         package_file))
         os.remove(join(UPLOAD_DIR, package_file))
 
 
@@ -115,8 +128,4 @@ def traverse():
 
 
 if __name__ == "__main__":
-    args = docopt(__doc__)
-    if args['pull'] or args['push']:
-        conn = S3Connection()
-        bucket = conn.get_bucket(args['<bucket>'])
     entry_console()
