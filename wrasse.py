@@ -13,7 +13,7 @@ Options:
 
 import os
 from functools import partial
-from os.path import join, exists
+from os.path import basename, join, exists
 import logging
 from hashlib import md5
 import shutil
@@ -64,12 +64,12 @@ def package():
         if not exists(UPLOAD_DIR):
             os.mkdir(UPLOAD_DIR)
         shutil.copy(package_file, UPLOAD_DIR)
-        vagrant.ssh(
-                c="reprepro -b /vagrant/{0} " +
-                "includedeb {1} /vagrant/{2}/{3}".format(REPO_DIR,
-                                                         distro,
-                                                         UPLOAD_DIR,
-                                                         package_file))
+        package_file = basename(package_file)
+        fmt = "reprepro -b /vagrant/{0} includedeb {1} /vagrant/{2}/{3}"
+        vagrant.ssh(c=fmt.format(REPO_DIR,
+                                 distro,
+                                 UPLOAD_DIR,
+                                 package_file))
         os.remove(join(UPLOAD_DIR, package_file))
 
 
